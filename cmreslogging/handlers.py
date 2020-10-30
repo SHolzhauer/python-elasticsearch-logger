@@ -8,6 +8,7 @@ from threading import Timer, Lock
 from enum import Enum
 from elasticsearch import helpers as eshelpers
 from elasticsearch import Elasticsearch, RequestsHttpConnection
+from packaging import version
 
 try:
     from requests_kerberos import HTTPKerberosAuth, DISABLED
@@ -295,26 +296,56 @@ class CMRESHandler(logging.Handler):
         self._timer = None
 
         if self._buffer:
+            # Determine ES version
             try:
-                with self._buffer_lock:
-                    logs_buffer = self._buffer
-                    self._buffer = []
-                actions = (
-                    {
-                        '_index': self._index_name_func.__func__(self.es_index_name),
-                        '_type': self.es_doc_type,
-                        '_source': log_record
-                    }
-                    for log_record in logs_buffer
-                )
-                eshelpers.bulk(
-                    client=self.__get_es_client(),
-                    actions=actions,
-                    stats_only=True
-                )
+                es_client = self.__get_es_client()
             except Exception as exception:
                 if self.raise_on_indexing_exceptions:
                     raise exception
+            else:
+                cluster_info = es_client.info()
+
+                if version.parse(cluster_info["version"]["number"]) >= version.parse("6.0.0"):
+                    try:
+                        with self._buffer_lock:
+                            logs_buffer = self._buffer
+                            self._buffer = []
+                        actions = (
+                            {
+                                '_index': self._index_name_func.__func__(self.es_index_name),
+                                '_source': log_record
+                            }
+                            for log_record in logs_buffer
+                        )
+                        eshelpers.bulk(
+                            client=es_client,
+                            actions=actions,
+                            stats_only=True
+                        )
+                    except Exception as exception:
+                        if self.raise_on_indexing_exceptions:
+                            raise exception
+                else:
+                    try:
+                        with self._buffer_lock:
+                            logs_buffer = self._buffer
+                            self._buffer = []
+                        actions = (
+                            {
+                                '_index': self._index_name_func.__func__(self.es_index_name),
+                                '_type': self.es_doc_type,
+                                '_source': log_record
+                            }
+                            for log_record in logs_buffer
+                        )
+                        eshelpers.bulk(
+                            client=es_client,
+                            actions=actions,
+                            stats_only=True
+                        )
+                    except Exception as exception:
+                        if self.raise_on_indexing_exceptions:
+                            raise exception
 
     def close(self):
         """ Flushes the buffer and release any outstanding resource
