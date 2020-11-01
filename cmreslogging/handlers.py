@@ -201,8 +201,8 @@ class CMRESHandler(logging.Handler):
         self.index_name_frequency = index_name_frequency
         self.es_doc_type = es_doc_type
         self.es_additional_fields = es_additional_fields.copy()
-        self.es_additional_fields.update({'host': socket.gethostname(),
-                                          'host_ip': socket.gethostbyname(socket.gethostname())})
+        #self.es_additional_fields.update({'host': socket.gethostname(),
+        #                                  'host_ip': socket.gethostbyname(socket.gethostname())})
         self.raise_on_indexing_exceptions = raise_on_indexing_exceptions
         self.default_timestamp_field_name = default_timestamp_field_name
 
@@ -445,12 +445,6 @@ class CMRESHandler(logging.Handler):
                         rec[key] = "" if value is None else value
         rec[self.default_timestamp_field_name] = self.__get_es_datetime_str(record.created)
         with self._buffer_lock:
-            if rec["host"]:
-                v = rec["host"]
-                rec["host"] = {
-                    "name": v,
-                    "ip": rec["host_ip"]
-                }
             self._buffer.append(rec)
 
         if len(self._buffer) >= self.buffer_size:
