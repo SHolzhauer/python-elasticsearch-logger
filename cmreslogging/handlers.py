@@ -287,6 +287,47 @@ class CMRESHandler(logging.Handler):
         current_date = datetime.datetime.utcfromtimestamp(timestamp)
         return "{0!s}.{1:03d}Z".format(current_date.strftime('%Y-%m-%dT%H:%M:%S'), int(current_date.microsecond / 1000))
 
+    def ecs_format(self, key):
+        """
+         Returns an ECS formatted key
+
+        :param key: original record
+        :return: record with renamed fields
+        """
+
+        if key == "args":
+            ecs_key = "process.args"
+        elif key == "levelname":
+            ecs_key = "log.level"
+        elif key == "pathname":
+            ecs_key = "process.executable"
+        elif key == "filename":
+            ecs_key = "log.origin.file.name"
+        elif key == "module":
+            ecs_key = "log.logger"
+        elif key == "exc_info":
+            ecs_key = "error.type"
+        elif key == "exc_text":
+            ecs_key = "error.message"
+        elif key == "stack_info":
+            ecs_key = "error.stack_trace"
+        elif key == "lineno":
+            ecs_key = "log.origin.file.line"
+        elif key == "funcName":
+            ecs_key = "log.origin.function"
+        elif key == "thread":
+            ecs_key = "process.thread.id"
+        elif key == "threadName":
+            ecs_key = "process.thread.name"
+        elif key == "processName":
+            ecs_key = "process.name"
+        elif key == "process":
+            ecs_key = "process.pid"
+        else:
+            ecs_key = key
+
+        return ecs_key.split(".")
+
     def flush(self):
         """ Flushes the buffer into ES
         :return: None
@@ -371,9 +412,45 @@ class CMRESHandler(logging.Handler):
             if key not in CMRESHandler.__LOGGING_FILTER_FIELDS:
                 if key == "args":
                     value = tuple(str(arg) for arg in value)
-                rec[key] = "" if value is None else value
+                if key not in ["msg", "name"]:
+                    ecs_key = self.ecs_format(key)
+                    if len(ecs_key) == 1:
+                        rec[ecs_key[0]] = "" if value is None else value
+                    elif len(ecs_key) == 2:
+                        if ecs_key[0] in rec:
+                            rec[ecs_key[0]][ecs_key[1]] = "" if value is None else value
+                        else:
+                            rec[ecs_key[0]] = {}
+                            rec[ecs_key[0]][ecs_key[1]] = "" if value is None else value
+                    elif len(ecs_key) == 3:
+                        if ecs_key[0] in rec and ecs_key[1] in rec[ecs_key[0]]:
+                            rec[ecs_key[0]][ecs_key[1]][ecs_key[2]] = "" if value is None else value
+                        elif ecs_key[0] in rec:
+                            rec[ecs_key[0]] = {}
+                            rec[ecs_key[0]][ecs_key[1]] = {}
+                            rec[ecs_key[0]][ecs_key[1]][ecs_key[2]] = "" if value is None else value
+                    elif len(ecs_key) == 4:
+                        if ecs_key[0] in rec and ecs_key[1] in rec[ecs_key[0]] and ecs_key[2] in rec[ecs_key[0]][ecs_key[1]]:
+                            rec[ecs_key[0]][ecs_key[1]][ecs_key[2]][ecs_key[3]] = "" if value is None else value
+                        elif ecs_key[0] in rec and ecs_key[1] in rec[ecs_key[0]]:
+                            rec[ecs_key[0]][ecs_key[1]] = {}
+                            rec[ecs_key[0]][ecs_key[1]][ecs_key[2]] = {}
+                            rec[ecs_key[0]][ecs_key[1]][ecs_key[2]][ecs_key[3]] = "" if value is None else value
+                        elif ecs_key[0] in rec:
+                            rec[ecs_key[0]] = {}
+                            rec[ecs_key[0]][ecs_key[1]] = {}
+                            rec[ecs_key[0]][ecs_key[1]][ecs_key[2]] = {}
+                            rec[ecs_key[0]][ecs_key[1]][ecs_key[2]][ecs_key[3]] = "" if value is None else value
+                    else:
+                        rec[key] = "" if value is None else value
         rec[self.default_timestamp_field_name] = self.__get_es_datetime_str(record.created)
         with self._buffer_lock:
+            if rec["host"]:
+                v = rec["host"]
+                rec["host"] = {
+                    "name": v,
+                    "ip": rec["host_ip"]
+                }
             self._buffer.append(rec)
 
         if len(self._buffer) >= self.buffer_size:
