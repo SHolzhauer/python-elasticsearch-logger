@@ -76,7 +76,7 @@ class CMRESHandler(logging.Handler):
     __DEFAULT_ES_INDEX_NAME = 'python_logger'
     __DEFAULT_ES_DOC_TYPE = 'python_log'
     __DEFAULT_RAISE_ON_EXCEPTION = False
-    __DEFAULT_TIMESTAMP_FIELD_NAME = "timestamp"
+    __DEFAULT_TIMESTAMP_FIELD_NAME = "@timestamp"
 
     __LOGGING_FILTER_FIELDS = ['msecs',
                                'relativeCreated',
